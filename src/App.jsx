@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, Sun, Moon, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
+import { Brain, Sun, Moon, LogOut, CheckCircle, AlertCircle, LayoutDashboard, FileText, BarChart3, Clock, AlertTriangle, Lightbulb } from 'lucide-react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import MoodTracker from './components/MoodTracker';
@@ -8,12 +8,12 @@ import Cheerleader from './components/Cheerleader';
 import BurnoutToolkit from './components/BurnoutToolkit';
 
 export default function App() {
-  // Authentication status stored in sessionStorage for security/privacy
+  // Authentication status stored in sessionStorage for privacy
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return sessionStorage.getItem('aura_auth') === 'true';
   });
 
-  // App Theme: defaults to system preference or light
+  // App Theme: system preference or localStorage
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('aura_theme');
     if (saved) return saved;
@@ -21,23 +21,32 @@ export default function App() {
     return systemPrefersDark ? 'dark' : 'light';
   });
 
-  // Exam Selection Target configuration
+  // Target config
   const [examConfig, setExamConfig] = useState(() => {
     const saved = localStorage.getItem('aura_exam_config');
     return saved ? JSON.parse(saved) : { exam: 'JEE', customExam: '', targetDate: '', aspirantName: '' };
   });
 
-  // Daily Mood Log list
+  // Unified Mood & Well-being logs (date, timestamp, mood, value, triggers, sleepHours, mockScore)
   const [moodLogs, setMoodLogs] = useState(() => {
     const saved = localStorage.getItem('aura_mood_logs');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Private Journal entries
+  // Private journal entries
   const [journalEntries, setJournalEntries] = useState(() => {
     const saved = localStorage.getItem('aura_journal_entries');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Pomodoro study sessions logged
+  const [studySessions, setStudySessions] = useState(() => {
+    const saved = localStorage.getItem('aura_study_sessions');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Navigation tab: 'dashboard' | 'journal' | 'analytics'
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   // Hot trigger state to open breathing grounding exercise automatically
   const [showBreathing, setShowBreathing] = useState(false);
@@ -65,7 +74,7 @@ export default function App() {
   const handleLogin = () => {
     setIsAuthenticated(true);
     sessionStorage.setItem('aura_auth', 'true');
-    showToast('Journal space unlocked. Welcome back!', 'success');
+    showToast('Mindful space unlocked. Welcome!', 'success');
   };
 
   const handleSignOut = () => {
@@ -80,7 +89,7 @@ export default function App() {
   const updateExamConfig = (newConfig) => {
     setExamConfig(newConfig);
     localStorage.setItem('aura_exam_config', JSON.stringify(newConfig));
-    showToast('Exam target updated successfully.');
+    showToast('Exam target settings updated.');
   };
 
   const logMood = (newLog) => {
@@ -92,7 +101,9 @@ export default function App() {
       timestamp: Date.now(),
       mood: newLog.mood,
       value: newLog.value,
-      triggers: newLog.triggers
+      triggers: newLog.triggers,
+      sleepHours: newLog.sleepHours || 7,
+      mockScore: newLog.mockScore || null
     };
 
     setMoodLogs((prev) => {
@@ -103,14 +114,16 @@ export default function App() {
       return updated;
     });
 
-    showToast(`Logged feeling: ${newLog.mood}`);
+    showToast('Well-being log saved.');
   };
 
   const saveJournalEntry = (text) => {
     const newEntry = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
-      text
+      text,
+      // Infer mood context from current day mood if logged
+      moodContext: getTodayMood() || 'Neutral'
     };
 
     setJournalEntries((prev) => {
@@ -119,7 +132,7 @@ export default function App() {
       return updated;
     });
 
-    showToast('Thought committed to journal safely.');
+    showToast('Thought safely stored in digital journal.');
   };
 
   const deleteJournalEntry = (id) => {
@@ -128,7 +141,25 @@ export default function App() {
       localStorage.setItem('aura_journal_entries', JSON.stringify(updated));
       return updated;
     });
-    showToast('Entry removed.', 'error');
+    showToast('Journal entry deleted.', 'error');
+  };
+
+  const logStudySession = (subject, minutes) => {
+    const newSession = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      date: new Date().toISOString().split('T')[0],
+      subject,
+      minutes
+    };
+
+    setStudySessions((prev) => {
+      const updated = [newSession, ...prev];
+      localStorage.setItem('aura_study_sessions', JSON.stringify(updated));
+      return updated;
+    });
+
+    showToast(`Logged study session: ${minutes}m of ${subject}`);
   };
 
   // Extract today's logged mood if it exists
@@ -137,6 +168,45 @@ export default function App() {
     const todayLog = moodLogs.find(l => l.date === todayStr);
     return todayLog ? todayLog.mood : '';
   };
+
+  // Compute stats for analytics
+  const getAnalyticsData = () => {
+    // Total focus minutes
+    const totalFocusMinutes = studySessions.reduce((acc, curr) => acc + curr.minutes, 0);
+    
+    // Average sleep
+    const averageSleep = moodLogs.length > 0 
+      ? (moodLogs.reduce((acc, curr) => acc + curr.sleepHours, 0) / moodLogs.length).toFixed(1)
+      : '7.0';
+
+    // Stress triggers frequency count
+    const triggerCounts = {};
+    moodLogs.forEach(log => {
+      log.triggers.forEach(t => {
+        triggerCounts[t] = (triggerCounts[t] || 0) + 1;
+      });
+    });
+
+    const sortedTriggers = Object.keys(triggerCounts)
+      .map(name => ({ name, count: triggerCounts[name] }))
+      .sort((a, b) => b.count - a.count);
+
+    // Subject breakdown
+    const subjectMinutes = {};
+    studySessions.forEach(sess => {
+      subjectMinutes[sess.subject] = (subjectMinutes[sess.subject] || 0) + sess.minutes;
+    });
+
+    return {
+      totalFocusMinutes,
+      averageSleep,
+      sortedTriggers,
+      subjectMinutes,
+      logsCount: moodLogs.length
+    };
+  };
+
+  const stats = getAnalyticsData();
 
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
@@ -175,42 +245,202 @@ export default function App() {
 
       {/* Main dashboard content */}
       <main className="main-content">
-        {/* Banner with dynamically updating greeting & setup CTA */}
-        <Dashboard 
-          examConfig={examConfig} 
-          onUpdateConfig={updateExamConfig} 
-        />
+        {/* Navigation Tabs Selector */}
+        <nav className="nav-tabs">
+          <button 
+            className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <LayoutDashboard size={16} />
+            Dashboard
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'journal' ? 'active' : ''}`}
+            onClick={() => setActiveTab('journal')}
+          >
+            <FileText size={16} />
+            Vent Journal
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <BarChart3 size={16} />
+            Analytics
+          </button>
+        </nav>
 
-        {/* Dashboard split content */}
-        <div className="dashboard-grid">
-          {/* Main workspace column: daily tracking and venting */}
-          <div className="grid-column">
-            <MoodTracker 
-              moodLogs={moodLogs} 
-              onLogMood={logMood} 
-              onShowBreathing={() => setShowBreathing(true)}
+        {/* Tab Routing render */}
+        {activeTab === 'dashboard' && (
+          <>
+            <Dashboard 
+              examConfig={examConfig} 
+              onUpdateConfig={updateExamConfig} 
             />
             
+            <div className="dashboard-grid">
+              {/* Daily well-being inputs */}
+              <div className="grid-column">
+                <MoodTracker 
+                  moodLogs={moodLogs} 
+                  onLogMood={logMood} 
+                  onShowBreathing={() => setShowBreathing(true)}
+                />
+              </div>
+
+              {/* Serene helper tools */}
+              <div className="grid-column">
+                <Cheerleader 
+                  currentMood={getTodayMood()}
+                  showBreathingDirectly={showBreathing}
+                  onBreathingDone={() => setShowBreathing(false)}
+                />
+                
+                <BurnoutToolkit 
+                  onShowToast={showToast} 
+                  onLogStudy={logStudySession}
+                  studySessions={studySessions}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'journal' && (
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <Dashboard 
+              examConfig={examConfig} 
+              onUpdateConfig={updateExamConfig} 
+            />
             <VentBox 
               journalEntries={journalEntries}
               onSaveEntry={saveJournalEntry}
               onDeleteEntry={deleteJournalEntry}
             />
           </div>
+        )}
 
-          {/* Supportive tools column: pomodoro, breaking activities, breathing grounding */}
-          <div className="grid-column">
-            <Cheerleader 
-              currentMood={getTodayMood()}
-              showBreathingDirectly={showBreathing}
-              onBreathingDone={() => setShowBreathing(false)}
-            />
-            
-            <BurnoutToolkit 
-              onShowToast={showToast} 
-            />
+        {activeTab === 'analytics' && (
+          <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '22px', marginBottom: '20px' }}>
+              Academic & Emotional Analytics
+            </h2>
+
+            <div className="analytics-grid">
+              {/* Column 1: Sleep, Study and overall logs counts */}
+              <div className="grid-column">
+                <div className="card">
+                  <h3 className="card-title">
+                    <span className="card-title-icon"><Clock size={18} /></span>
+                    Mindful Engagement Metrics
+                  </h3>
+                  
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <span className="stat-value">{stats.logsCount}</span>
+                      <span className="stat-label">Check-ins</span>
+                    </div>
+                    <div className="stat-card">
+                      <span className="stat-value">{stats.averageSleep}h</span>
+                      <span className="stat-label">Avg Sleep</span>
+                    </div>
+                    <div className="stat-card">
+                      <span className="stat-value">{stats.totalFocusMinutes}m</span>
+                      <span className="stat-label">Focus Time</span>
+                    </div>
+                    <div className="stat-card">
+                      <span className="stat-value">{studySessions.length}</span>
+                      <span className="stat-label">Sessions</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <h3 className="card-title">
+                    <span className="card-title-icon"><AlertTriangle size={18} /></span>
+                    Stress Trigger Analysis
+                  </h3>
+                  
+                  {stats.sortedTriggers.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '16px' }}>
+                      Log today's well-being checklist to analyze trigger profiles.
+                    </p>
+                  ) : (
+                    <div className="trigger-stat-bar-container">
+                      {stats.sortedTriggers.slice(0, 5).map(trig => {
+                        const totalLogs = moodLogs.length || 1;
+                        const percentage = ((trig.count / totalLogs) * 100).toFixed(0);
+                        return (
+                          <div key={trig.name} className="trigger-stat-row">
+                            <span className="trigger-stat-name">{trig.name}</span>
+                            <div className="trigger-progress-bar-bg">
+                              <div 
+                                className="trigger-progress-bar-fill"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            <span className="trigger-stat-count">{trig.count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Recommendation Insight */}
+                  {stats.sortedTriggers.length > 0 && (
+                    <div style={{ display: 'flex', gap: '10px', backgroundColor: 'var(--bg-accent)', padding: '12px 16px', borderRadius: '12px', borderLeft: '3px solid var(--color-purple)', marginTop: '18px' }}>
+                      <Lightbulb size={18} style={{ color: 'var(--color-purple)', flexShrink: 0, marginTop: '2px' }} />
+                      <p style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                        <strong>Aura Insight:</strong> <em>"{stats.sortedTriggers[0].name}"</em> is your top wellness trigger. Focus on scheduling mindfulness resets when studying this category!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Column 2: Chart Trends and study splits */}
+              <div className="grid-column">
+                <MoodTracker 
+                  moodLogs={moodLogs} 
+                  onLogMood={logMood} 
+                  onShowBreathing={() => setShowBreathing(true)}
+                  onlyShowChart={true}
+                />
+
+                <div className="card">
+                  <h3 className="card-title">
+                    <span className="card-title-icon"><Clock size={18} /></span>
+                    Focus Time by Subject
+                  </h3>
+                  {Object.keys(stats.subjectMinutes).length === 0 ? (
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '16px' }}>
+                      No study focus sessions completed yet. Use the Pomodoro timer on your Dashboard.
+                    </p>
+                  ) : (
+                    <div className="trigger-stat-bar-container">
+                      {Object.keys(stats.subjectMinutes).map(sub => {
+                        const maxVal = Math.max(...Object.values(stats.subjectMinutes)) || 1;
+                        const percentage = ((stats.subjectMinutes[sub] / maxVal) * 100).toFixed(0);
+                        return (
+                          <div key={sub} className="trigger-stat-row">
+                            <span className="trigger-stat-name">{sub}</span>
+                            <div className="trigger-progress-bar-bg">
+                              <div 
+                                className="trigger-progress-bar-fill"
+                                style={{ width: `${percentage}%`, backgroundColor: 'var(--color-green)' }}
+                              />
+                            </div>
+                            <span className="trigger-stat-count">{stats.subjectMinutes[sub]}m</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* Footer */}
